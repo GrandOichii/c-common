@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "list/list.h"
 #include "stack/stack.h"
@@ -8,11 +9,12 @@
 
 const char * json_str = ""
 "{\n"
-"	\"arr\": [\n"
-"		1, 2\n"
-"	],"
-"    \"value\": \"hello, world!\"\n"
+"	\"value\": \"hello, world!\",\n"
+"	\"second\": 123,\n"
+"	\"arr\": [10, 4, \"amogus\", 51]"
 "}";
+
+// const char* json_str = "1";
 
 void list_test() {
 	list* l = new_list();
@@ -42,8 +44,22 @@ void stack_test() {
 }
 
 void json_test() {
-	json_node* result;
-	int err = parse(json_str, result);
+	json_node result;
+	int err = parse(json_str, &result);
+	// printf("Node child count: %d\n", result.child_count);
+	// printf("Root type: %d\n", result.type);
+	// printf("Child 1 type: %d\n", result.children[0].value->type);
+	// printf("Child 2 type: %d\n", result.children[1].value->type);
+
+	// printf("First key: %s\n", result.children[0].string_key);
+	// printf("First value: %s\n", result.children[0].value->string_val);
+	// printf("Second key: %s\n", result.children[1].string_key);
+	// printf("Second key: %f\n", result.children[1].value->double_val);
+	printf("Err: %d\n", err);
+
+	const char* str = stringify(&result);
+
+	printf("Stringify result:\n%s\n", str);
 }
 
 int main() {
