@@ -1,3 +1,6 @@
+// TODO add float support
+// TODO throws errors when feeding empty object / array
+
 #include "json.h"
 
 #include <stdlib.h>
@@ -29,11 +32,9 @@ const char* read_string(const char* string, int* pos) {
         switch(cur) {
         case '\"':
             result[*pos - start - 1] = '\0';
-            // printf("Finished reading string %s\n", result);
             return result;
         default:
             result[*pos - start - 1] = cur;
-            // printf("%c\n", cur);
             break;
         }
     }
@@ -58,77 +59,50 @@ char next_ch(const char* string, int* pos) {
     do {
         result = string[*pos];
         ++(*pos);
-        // printf("Mogu: %c\n", result);
     } while (!result != '\0' || ignore_ch(result));
-    // printf("End mogu\n");
 
-    // printf("-- %c\n", result);
     return result;
 }
 
 int is_number(char c) {
     // TODO add double
-    return c >= '0' && c <= '9';
+    return (c >= '0' && c <= '9') || c == '.';
 }
 
 int try_read_number(const char* string, int* pos, double* result, char first) {
     int p = *pos;
     if (!is_number(first)) return 1;
-
-    // printf("Start reading number at %d char %c\n", p, string[p]);
     
     char* result_s = malloc(sizeof(char) * MAX_STRING_SIZE);
 
     result_s[0] = first;
     while (is_number(string[p])) {
-        // printf("Setting to %c at %d\n", string[p], p - *pos + 1);
         result_s[p - *pos + 1] = string[p];
         ++p;
     }
-    // printf("Resulting index %d\n", p - *pos + 1);
     result_s[p - *pos + 1] = '\0';
 
     *pos = p;
 
-    printf("Finished reading float %s\n", result_s);
     *result = strtod(result_s, NULL);
-    printf("Converted float %f\n", *result);
     free(result_s);
     return 0; 
 }
 
-// int read_int(const char* string, int* pos, int* result) {
-//     if (!is_number(string[*pos])) {
-//         printf("Err: expected a number at pos %d, but got %c\n", *pos, string[*pos]);
-//         return 1;
-//     }
-//     int start = *pos;
-//     char* result_s = malloc(sizeof(char) * MAX_STRING_SIZE);
-//     while (is_number(string[*pos])) {
-//         result_s[*pos - start] = string[*pos];
-//         ++(*pos);
-//     } 
-//     result_s[*pos - start] = '\0';
-//     printf();
-// }
 
 int do_parse(const char* string, int* pos, stack* braces, json_node* result) {
     json_node* res = malloc(sizeof(json_node));
-    // printf("Initialized res\n");
     int ctx = CTX_READING_VALUE;
     char cur;
 
     while ((cur = next_ch(string, pos)) != '\0') {
-        // printf("CTX: %d\n", ctx);
 
         switch (ctx) {
 
         case CTX_READING_VALUE:
             double num_value; 
             int err = try_read_number(string, pos, &num_value, cur);
-            // int err = 1;
             if (!err) {
-                // printf("Exiting %d\n", res);
                 res->type = JSON_DOUBLE;
                 res->double_val = num_value;
                 goto exit_success;
@@ -148,7 +122,7 @@ int do_parse(const char* string, int* pos, stack* braces, json_node* result) {
                 ctx = CTX_READING_ARRAY;
                 continue;
             default:
-                printf("Unexpected character %c at %d\n", cur, *pos);
+                printf("Err: unexpected character %c at %d\n", cur, *pos);
                 goto exit_fail;
             }
 
@@ -177,14 +151,13 @@ int do_parse(const char* string, int* pos, stack* braces, json_node* result) {
             if (next == '}') goto exit_success;
             if (next == ',') continue;
 
-            printf("Unexpected character when reading object key values at pos %c\n", next);
+            printf("Err: unexpected character when reading object key values at pos %c\n", next);
             goto exit_fail;
 
         case CTX_READING_ARRAY:
             // TODO
             --(*pos);
 
-            // printf("Start reading avalue at %d: %c\n", *pos, cur);
             json_kvp* akvp = malloc(sizeof(json_kvp));
             json_node* avalue = malloc(sizeof(json_node));
             int aerr = do_parse(string, pos, braces, avalue);
@@ -201,7 +174,7 @@ int do_parse(const char* string, int* pos, stack* braces, json_node* result) {
             if (next == ']') goto exit_success;
             if (next == ',') continue;
 
-            printf("Unexpected character when reading array values at pos %c\n", next);
+            printf("Err: unexpected character when reading array values at pos %c\n", next);
             goto exit_fail;
         }
 
@@ -211,7 +184,6 @@ exit_success:
     *result = *res;
     return 0;
 exit_fail:
-    // printf("CALLED FREE\n");
     free(res);
     return 1;
 }
@@ -226,28 +198,45 @@ int parse(const char* string, json_node* result) {
     return res;
 }
 
-const char* stringify_kvp(const json_kvp* kvp, JSON_TYPE parent_type) {
+const char* create_indent(int indent, int layer) {
+    int size = indent * layer;
+    char* result = malloc(sizeof(char) * size + 1);
+    for (int i = 0; i < size; i++) result[i] = ' ';
+    result[size] = '\0';
+    return result;
+}
+
+const char* stringify_node(const json_node* json, int indent, int layer);
+
+const char* stringify_kvp(const json_kvp* kvp, JSON_TYPE parent_type, int indent, int layer) {
     char* result;
-    char* vstring = stringify(kvp->value);
+    const char* vstring = stringify_node(kvp->value, indent, layer);
+
     switch (parent_type){
     case JSON_OBJECT:
-        result = malloc(sizeof(char) * 20);
-        result[0] = '\"';
-        result[1] = '\0';
+        result = malloc(sizeof(char) * MAX_STRING_SIZE);
+        result[0] = '\0';
+        if (indent) {
+            strcat(result, create_indent(indent, layer));
+        }
+        strcat(result, "\"");
         strcat(result, kvp->string_key);
-        strcat(result, "\":");
+        strcat(result, indent == 0 ? "\":" : "\": ");
         strcat(result, vstring);
+        // free(vstring);
         return result;
         break;
     default:
+        if (indent) {
+            vstring = strcat(create_indent(indent, layer), vstring);
+        }
         return vstring;
         break;
     }
 }
 
-const char* stringify(const json_node* json) {
+const char* stringify_node(const json_node* json, int indent, int layer) {
     char* result = malloc(sizeof(char) * 20);
-    // char* result;
     switch (json->type){
     case JSON_STRING:
         result[0] = '\"';
@@ -266,19 +255,32 @@ const char* stringify(const json_node* json) {
             if (i != 0) {
                 strcat(result, ",");
             }
-            strcat(result, stringify_kvp(&json->children[i], json->type));
+            if (indent) {
+                strcat(result, "\n");
+            }
+            strcat(result, stringify_kvp(&json->children[i], json->type, indent, layer+1));
+        }
+        if (indent) {
+            strcat(result, "\n");
+            strcat(result, create_indent(indent, layer));
         }
         strcat(result, "}");
         return result;
     case JSON_ARRAY:
-        // TODO
         result[0] = '[';
         result[1] = '\0';
         for (int i = 0; i < json->child_count; i++) {
             if (i != 0) {
                 strcat(result, ",");
             }
-            strcat(result, stringify_kvp(&json->children[i], json->type));
+            if (indent) {
+                strcat(result, "\n");
+            }
+            strcat(result, stringify_kvp(&json->children[i], json->type, indent, layer+1));
+        }
+        if (indent) {
+            strcat(result, "\n");
+            strcat(result, create_indent(indent, layer));
         }
         strcat(result, "]");
         return result;
@@ -287,4 +289,13 @@ const char* stringify(const json_node* json) {
         break;
     }
 }
+
+const char* stringify(const json_node* json) {
+    return stringify_node(json, 0, 0);
+}
+
+const char* stringify_pretty(const json_node* json, int indent) {
+    return stringify_node(json, indent, 0);
+}
+
 

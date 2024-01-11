@@ -26,5 +26,6 @@ typedef struct json_node {
 
 int parse(const char* string, json_node* result);
 const char* stringify(const json_node* json);
+const char* stringify_pretty(const json_node* json, int indent);
 
 #endif
